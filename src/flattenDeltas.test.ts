@@ -1,6 +1,4 @@
 import { flattenDeltas } from './flattenDeltas';
-import fastDeepEqual from 'fast-deep-equal';
-import { create } from 'jsondiffpatch';
 import {
   addDelta,
   deleteDelta,
@@ -8,14 +6,12 @@ import {
   replaceDelta,
   unidiffDelta,
 } from './jsondiffpatch-types';
-
-function crashOnNotEqual(a: unknown, b: unknown) {
-  if (!fastDeepEqual(a, b)) {
-    throw new Error('unexpected data mismatch');
-  }
-}
-
-const jdp = create({ textDiff: { minLength: 10 } });
+import {
+  crashOnNotEqual,
+  jdp,
+  makeFuzzTests,
+  testDiffPatch,
+} from './testLib/testDiffPatch';
 
 describe('merges deltas', () => {
   const tests: [Delta | undefined, Delta | undefined, Delta | undefined][] = [
@@ -171,21 +167,6 @@ describe('merges deltas', () => {
     ).toThrowError('unexpected data mismatch');
   });
 
-  function testDiffPatch(a: unknown, b: unknown, c: unknown) {
-    const diffAB = jdp.diff(a, b);
-    const diffBC = jdp.diff(b, c);
-    let diffABC;
-    let result;
-    try {
-      diffABC = flattenDeltas(diffAB, diffBC, jdp, crashOnNotEqual);
-      result = diffABC ? jdp.patch(jdp.clone(a), diffABC) : a;
-      expect(result).toEqual(c);
-    } catch (e) {
-      console.warn({ a, b, c, diffAB, diffBC, diffABC, result });
-      throw e;
-    }
-  }
-
   it.each([
     ['hello', 'darkness', 'my old friend'],
     [{ a: true }, { a: true, b: 'hello' }, { a: false, b: 'hello' }],
@@ -203,7 +184,7 @@ describe('merges deltas', () => {
     testDiffPatch(a, b, c);
   });
 
-  const objects: unknown[] = [
+  const fuzzTests = makeFuzzTests([
     'hello',
     'hello darkness',
     'hello that is a darkness',
@@ -214,25 +195,8 @@ describe('merges deltas', () => {
     [1, 2, 3, 4],
     [1, 2, 3, 4, 5],
     [1, 3, 4, 5],
-    [1, 3, 4],
-    [1, 3],
-    [1, 2, 3],
-    [1, 4, 2, 3],
     undefined,
-  ];
+  ]);
 
-  const fuzzTests: [unknown, unknown, unknown][] = [];
-  for (const a of objects) {
-    for (const b of objects) {
-      for (const c of objects) {
-        if (a !== b && b !== c) {
-          fuzzTests.push([a, b, c]);
-        }
-      }
-    }
-  }
-
-  it.each(fuzzTests)('fuzzed testDiffPatch(%s, %s, %s) ', (a, b, c) => {
-    testDiffPatch(a, b, c);
-  });
+  it.each(fuzzTests)('fuzzed testDiffPatch(%s, %s, %s) ', testDiffPatch);
 });
